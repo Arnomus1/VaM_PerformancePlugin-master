@@ -1,0 +1,78 @@
+﻿name: Build BepInEx Plugin
+on: 
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    permissions:
+      contents: write
+      
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+        
+      - name: Cache .NET restore
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: "${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}"
+          restore-keys: |
+            ${{ runner.os }}-nuget
+            
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+#      - name: Install 7-Zip
+#        run: choco install 7zip
+
+      - name: Download BepInEx 5.X
+        run: Invoke-WebRequest -Uri  https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.2/BepInEx_win_x64_5.4.23.2.zip -OutFile BepInEx_win_x64_5.4.23.2.zip
+        
+#      - name: Extract ZIP
+#        run: 7z x BepInEx_win_x64_5.4.23.2.zip -oBepInEx_win_x64_5.4.23.2
+
+      - name: Add DLL to ZIP
+        run: |
+          New-Item -ItemType Directory BepInEx/plugins/VaM_PerformancePlugin
+          Copy-Item VaM_PerformancePlugin/bin/Release/net35/VaM_PerformancePlugin.dll BepInEx/plugins/VaM_PerformancePlugin/VaM_PerformancePlugin.dll
+          Compress-Archive -Path ./BepInEx/ -Update -DestinationPath BepInEx_win_x64_5.4.23.2.zip
+          Move-Item BepInEx_win_x64_5.4.23.2.zip BepInEx_win_x64_5.4.23.2_with_VaM_PerformancePlugin.zip
+
+#      - name: Add DLL to ZIP
+#        run: |
+#          mkdir BepInEx_win_x64_5.4.23.2/BepInEx/plugins/
+#          copy VaM_PerformancePlugin/bin/Release/net35/VaM_PerformancePlugin.dll BepInEx_win_x64_5.4.23.2/BepInEx/plugins/
+      
+#      - name: Recompress ZIP
+#        run: 7z a BepInEx_win_x64_5.4.23.2_with_VaM_PerformancePlugin.zip BepInEx_win_x64_5.4.23.2\
+#        
+#      - name: Test
+#        run: dotnet test --no-build --verbosity normal
+      
+      - name: Get short SHA
+        id: get_short_sha
+        run: echo "::set-output name=sha::$(git rev-parse --short HEAD)"
+        
+      - name: Create release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            BepInEx_win_x64_5.4.23.2_with_VaM_PerformancePlugin.zip
+            VaM_PerformancePlugin/bin/Release/net35/VaM_PerformancePlugin.dll
+          generate_release_notes: true
+          prerelease: true
+          tag_name: ${{  steps.get_short_sha.outputs.sha }}
+          name: Pre-Release - ${{ steps.get_short_sha.outputs.sha }}
